@@ -1,0 +1,5 @@
+.venv/
+*.log
+*.json
+*.yml
+.idea/
