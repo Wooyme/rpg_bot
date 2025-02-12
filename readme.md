@@ -1,5 +1,4 @@
+# About
+这是Discord bot《女主角的冒险》
+
 # todo
-1. 与有名字的NPC的长期互动。
-2. 循序渐进的色情内容：羞辱、强奸、调教、虐待
-3. 加入Quests，并在Quests中合适的插入SexEvent。
-4. 在SexEvent中，增加只根据“一段对话”生成纯粹的成人向描述的功能。

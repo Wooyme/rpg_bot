@@ -339,3 +339,6 @@ class PlayAgent:
 
     def debug(self):
         return json.dumps(self._history, ensure_ascii=False, indent=2)
+
+    def last_options(self):
+        return self._last_options

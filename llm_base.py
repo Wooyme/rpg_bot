@@ -39,8 +39,6 @@ def llm(system_prompt, user_prompt, preset='deepseek-deepinfra', history=None,
 
 def _llm(system_prompt, user_prompt, preset, history=None,
          stop_words=None, prefix_words=None, suffix_words=None, content_callback=None, hidden_words=None) -> (str, int):
-    logger.info(user_prompt)
-
     httpx_client = httpx.Client(timeout=Timeout(timeout=15.0))
     if history is None:
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
@@ -87,7 +85,6 @@ def _llm(system_prompt, user_prompt, preset, history=None,
     if content_callback is not None:
         time.sleep(1)
     content = ''.join(collected_messages)
-    logger.info(content)
     if hidden_words is not None:
         for word in hidden_words:
             content = content.replace(word, '')
