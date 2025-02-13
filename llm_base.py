@@ -39,12 +39,18 @@ def llm(system_prompt, user_prompt, preset='deepseek-deepinfra', history=None,
 
 def _llm(system_prompt, user_prompt, preset, history=None,
          stop_words=None, prefix_words=None, suffix_words=None, content_callback=None, hidden_words=None) -> (str, int):
+    logger.debug('User Prompt: %s', user_prompt)
     httpx_client = httpx.Client(timeout=Timeout(timeout=15.0))
     if history is None:
-        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+        messages = []
+        if system_prompt is not None:
+            messages.append({"role": "system", "content": system_prompt})
     else:
         history.append({"role": "user", "content": user_prompt})
-        messages = [{"role": "system", "content": system_prompt}] + history
+        messages = []
+        if system_prompt is not None:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        messages += history
     if prefix_words is not None:
         messages.append({"role": "assistant", "content": prefix_words})
     from openai import OpenAI

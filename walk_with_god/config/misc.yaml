@@ -1,0 +1,5 @@
+moderator:
+  task_prompt:
+    根据下面的一系列场景，判断“{player_name}“接下去是否会进入性行为。
+    {scenes}
+    回复是/否

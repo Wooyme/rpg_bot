@@ -1,86 +1,30 @@
 import pickle
-import random
 import re
 
 import llm_base
 from basic_agent import PlayAgent
+from walk_with_god.god import EvilGod, GODS
+from walk_with_god.misc import Moderator
 
 
 def _extract_scene(resp):
-    regex = re.compile(r'场景概括[^:：\.\s]*[:：\.]([\s\S]+)等待玩家')
+    regex = re.compile(r'场景概括[^:：\.\s]*[:：\.]([\s\S]+)等待')
     attr = regex.findall(resp + '\n')
     if len(attr) == 0:
         return None
     else:
-        return attr[0].strip('*').strip()
+        return attr[0].replace('\n', '').replace('*', '')
 
 
-def _remove_summary_text(content):
-    if '等待玩家' in content:
-        regex = re.compile(r'(场景概括[^:：\.\s]*[:：\.][\s\S]+)等待玩家')
+def _remove_summary_text(content, player_name):
+    if f'等待{player_name}回复' in content:
+        regex = re.compile(rf'(场景概括[^:：\.\s]*[:：\.][\s\S]+)等待{player_name}回复')
     else:
         regex = re.compile(r'(场景概括[^:：\.\s]*[:：\.][\s\S]+)')
     scenes = regex.findall(content)
     for scene in scenes:
         content = content.replace(scene, '')
     return content
-
-
-class God(PlayAgent):
-    config_path = 'config/walk_with_god.yaml'
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._scene_history = []
-        self.goodness_counter = 6
-        self.sex_counter = 4
-
-    def startup(self, stream_callback=None, **kwargs):
-        if 'scene' in kwargs:
-            self._scene_history.append(kwargs['scene'])
-        return super().startup(self._enhance_stream_callback(stream_callback), **kwargs)
-
-    def play(self, option, extra_input, stream_callback=None, **kwargs):
-        if 'scene' in kwargs:
-            self._scene_history.append(kwargs['scene'])
-        if len(self._scene_history) > 30:
-            self.prompt_args['gameover'] = True
-        self.goodness_counter -= 1
-        self.sex_counter -= 1
-        if self.goodness_counter == 0:
-            self.goodness_counter = random.randint(4, 8)
-            return super().play(option, extra_input, self._enhance_stream_callback(stream_callback), goodness=True,
-                                **kwargs)
-        elif self.sex_counter == 0:
-
-            self.sex_counter = random.randint(3, 5)
-            return super().play(option, extra_input, self._enhance_stream_callback(stream_callback), sex=True, **kwargs)
-        return super().play(option, extra_input, self._enhance_stream_callback(stream_callback), **kwargs)
-
-    def _enhance_stream_callback(self, callback):
-
-        def enhanced_callback(content):
-            content = "DM思考中" + len(content) * '.'
-            callback(content)
-
-        return enhanced_callback
-
-    def _compress_history(self, executor):
-        if len(self._history) < 20:
-            return None
-        scene = ""
-        for i, record in enumerate(self._scene_history[:-5]):
-            scene += f"{i + 1}.{record}\n"
-        history = [{'role': 'user', 'content': f'以下是前情提要：\n{scene}'}] + self._history[-10:]
-
-        def summary():
-            return history
-
-        return executor.submit(summary)
-
-
-class EvilGod(God):
-    name = 'evil_god'
 
 
 def load_story(story_id):
@@ -92,10 +36,11 @@ class Story(PlayAgent):
     config_path = 'config/walk_with_god.yaml'
     name = 'story'
 
-    def __init__(self, story_id, **kwargs):
+    def __init__(self, story_id, god_name, **kwargs):
         super().__init__(**kwargs)
         self._story_id = story_id
-        self.evil_god = None
+        self._god_name = god_name
+        self.god = None
         self.current_scene = None
         self._scene_history = []
         self._scene_summary = ""
@@ -105,37 +50,44 @@ class Story(PlayAgent):
             pickle.dump(self, f)
         resp, options = super().startup(self._enhanced_stream_callback(stream_callback), **kwargs)
         self.current_scene = _extract_scene(resp)
-        resp = _remove_summary_text(resp)
+        resp = _remove_summary_text(resp, self.prompt_args['player_name'])
         return resp, options
 
     def play(self, option, extra_input, stream_callback=None, **kwargs):
         with open(f'db/{self._story_id}.pak', 'wb') as f:
             pickle.dump(self, f)
         if option == 'main_option_action':
-            if self.evil_god is None:
-                self.evil_god = EvilGod(**self.prompt_args)
-                god_action, _ = self.evil_god.startup(stream_callback, scene=self.current_scene,
-                                                      player_action=extra_input)
+            if self.god is None:
+                self.god = GODS[self._god_name](**self.prompt_args)
+                god_action, _ = self.god.startup(stream_callback, scene=self.current_scene,
+                                                 player_action=extra_input)
             else:
-                god_action, _ = self.evil_god.play(option, extra_input, stream_callback, scene=self.current_scene)
-
+                god_action, _ = self.god.play(option, extra_input, stream_callback, scene=self.current_scene)
+            self.god.prompt_args['talk2god'] = None
             resp, options = super().play(option, extra_input, self._enhanced_stream_callback(stream_callback),
                                          god_action=god_action)
+
             if len(self._scene_history) > 30:
                 self.open_branch('save', only=True)
             self.current_scene = _extract_scene(resp)
             self._scene_history.append(self.current_scene)
-            resp = _remove_summary_text(resp)
+            resp = _remove_summary_text(resp, self.prompt_args['player_name'])
+            if len(self._scene_history) == 10:
+                self.open_branch('save')
+                resp = f"{resp}\n\n[小提示]归档功能已启用。"
+            if len(self._scene_history) == 20:
+                resp = f"{resp}\n\n[小提示]对话轮次以达到20轮。30轮对话为系统上限，将强制进入结局并归档。"
             return resp, options
         elif option == 'main_option_talk2god':
-            return self.evil_god.play('main_option_action', None, stream_callback, talk2god=extra_input)
+            self.god.prompt_args['talk2god'] = extra_input
+            return "神听到了", self._next_options()
         elif option == 'save_option_summary':
             resp = self.summary_all()
             return resp, []
 
     def _enhanced_stream_callback(self, stream_callback):
         def callback(content):
-            content = _remove_summary_text(content)
+            content = _remove_summary_text(content, self.prompt_args['player_name'])
             stream_callback(content)
 
         return callback
@@ -170,3 +122,6 @@ class Story(PlayAgent):
         self.logger.info(f"Summary: {resp}")
         self._scene_summary = resp
         return resp
+
+    def debug(self):
+        return '\n'.join(self._scene_history)

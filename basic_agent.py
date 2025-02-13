@@ -19,7 +19,7 @@ def _format_text(raw, inputs: dict):
     for match in matches:
         contains = False
         for key, value in inputs.items():
-            if key in match[1] and value:
+            if key == match[1] and value:
                 raw = raw.replace(match[0], match[2])
                 contains = True
                 break
@@ -119,6 +119,8 @@ class BasicAgent:
         return text
 
     def system_prompt(self, **kwargs):
+        if 'system_prompt' not in self.config:
+            return None
         return self.format_text('system_prompt', {**self.prompt_args, **kwargs})
 
     def task_prompt(self, **kwargs):
@@ -203,13 +205,13 @@ class PlayAgent:
         return self
 
     def _format_text(self, name, inputs={}):
-        self.logger.info(f"format_args: {name}, {inputs}")
         result = _format_text(self.config[name], inputs)
-        self.logger.info(f"format_text: {result}")
         return result
 
     def _system_prompt(self, **kwargs):
-        return self._format_text('system_prompt', {**self.prompt_args, **kwargs})
+        if 'system_prompt' in self.config:
+            return self._format_text('system_prompt', {**self.prompt_args, **kwargs})
+        return None
 
     def _startup_prompt(self, **kwargs):
         return self._format_text('startup_prompt', {**self.prompt_args, **kwargs})
@@ -248,7 +250,7 @@ class PlayAgent:
     def on_sub_quit(self, **kwargs):
         pass
 
-    def play(self, option, extra_input, stream_callback=None,**kwargs):
+    def play(self, option, extra_input, stream_callback=None, **kwargs):
         extra_args = {}
         if self._sub_agent:
             resp, options = self._sub_agent.play(option, extra_input, stream_callback)
@@ -274,9 +276,10 @@ class PlayAgent:
         next_options = self._next_options()
 
         def req(content_callback):
+
             _resp, _ = llm_base.llm(self._system_prompt(),
                                     self._play_prompt(player_action=player_action,
-                                                      player_option=self._format_text(option), **extra_args,**kwargs),
+                                                      player_option=self._format_text(option), **extra_args, **kwargs),
                                     history=self._history,
                                     preset=self.model_preset, content_callback=content_callback,
                                     stop_words=self.stop_words)
