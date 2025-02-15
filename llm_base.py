@@ -27,14 +27,17 @@ def llm(system_prompt, user_prompt, preset='deepseek-deepinfra', history=None,
     retry_times = 0
     while retry_times < 3:
         try:
-            return _llm(system_prompt, user_prompt, preset, history, stop_words, prefix_words, suffix_words,
+            resp = _llm(system_prompt, user_prompt, preset, history, stop_words, prefix_words, suffix_words,
                         content_callback, hidden_words)
+            if len(resp) == 0:
+                raise Exception("Empty response")
+            return resp
         except Exception as e:
             print(e)
             traceback.print_exc()
             retry_times += 1
             time.sleep(5)
-    return "", 0
+    raise Exception("Failed to get response")
 
 
 def _llm(system_prompt, user_prompt, preset, history=None,
@@ -49,7 +52,7 @@ def _llm(system_prompt, user_prompt, preset, history=None,
         history.append({"role": "user", "content": user_prompt})
         messages = []
         if system_prompt is not None:
-            messages.insert(0, {"role": "system", "content": system_prompt})
+            messages = [{"role": "system", "content": system_prompt}]
         messages += history
     if prefix_words is not None:
         messages.append({"role": "assistant", "content": prefix_words})

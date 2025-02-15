@@ -3,8 +3,7 @@ import re
 
 import llm_base
 from basic_agent import PlayAgent
-from walk_with_god.god import EvilGod, GODS
-from walk_with_god.misc import Moderator
+from walk_with_god.god import GODS
 
 
 def _extract_scene(resp):
@@ -17,8 +16,8 @@ def _extract_scene(resp):
 
 
 def _remove_summary_text(content, player_name):
-    if f'等待{player_name}回复' in content:
-        regex = re.compile(rf'(场景概括[^:：\.\s]*[:：\.][\s\S]+)等待{player_name}回复')
+    if f'等待{player_name}决定' in content:
+        regex = re.compile(rf'(场景概括[^:：\.\s]*[:：\.][\s\S]+)等待{player_name}决定')
     else:
         regex = re.compile(r'(场景概括[^:：\.\s]*[:：\.][\s\S]+)')
     scenes = regex.findall(content)
@@ -35,6 +34,7 @@ def load_story(story_id):
 class Story(PlayAgent):
     config_path = 'config/walk_with_god.yaml'
     name = 'story'
+    model_preset = 'deepseek-deepinfra'
 
     def __init__(self, story_id, god_name, **kwargs):
         super().__init__(**kwargs)
@@ -59,6 +59,8 @@ class Story(PlayAgent):
         if option == 'main_option_action':
             if self.god is None:
                 self.god = GODS[self._god_name](**self.prompt_args)
+                if self._scene_summary:
+                    self.god._scene_summary = self._scene_summary
                 god_action, _ = self.god.startup(stream_callback, scene=self.current_scene,
                                                  player_action=extra_input)
             else:
@@ -72,7 +74,7 @@ class Story(PlayAgent):
             self.current_scene = _extract_scene(resp)
             self._scene_history.append(self.current_scene)
             resp = _remove_summary_text(resp, self.prompt_args['player_name'])
-            if len(self._scene_history) == 10:
+            if len(self._scene_history) == 5:
                 self.open_branch('save')
                 resp = f"{resp}\n\n[小提示]归档功能已启用。"
             if len(self._scene_history) == 20:
@@ -82,8 +84,20 @@ class Story(PlayAgent):
             self.god.prompt_args['talk2god'] = extra_input
             return "神听到了", self._next_options()
         elif option == 'save_option_summary':
-            resp = self.summary_all()
-            return resp, []
+            self._scene_summary += "\n" + self.summary_all()
+            self.open_branch('next', only=True)
+            return self._scene_summary, self._next_options()
+        elif option == 'next_option_continue':
+            self.open_branch('main', only=True)
+            self.god = None
+            self._scene_history = []
+            self._history = []
+            self.add_history('user', f"结束的故事：{self._scene_summary}\n不要让结束的故事再次发生。")
+            self.prompt_args['player_state'] = extra_input
+            return self.startup(stream_callback)
+        elif option == 'next_option_modify':
+            self._scene_summary = extra_input
+            return "归档记录已修改", self._next_options()
 
     def _enhanced_stream_callback(self, stream_callback):
         def callback(content):
@@ -99,7 +113,7 @@ class Story(PlayAgent):
             for i, record in enumerate(self._scene_history):
                 scene += f"{i + 1}.{record}\n"
             if self._scene_summary:
-                _history = [{'role': 'user', 'content': "过去的故事：" + self._scene_summary + "\n前情提要：\n" + scene}]
+                _history = [{'role': 'user', 'content': "结束的故事：" + self._scene_summary + "\n前情提要：\n" + scene}]
             else:
                 _history = [{'role': 'user', 'content': "前情提要：\n" + scene}]
             return _history
@@ -108,7 +122,7 @@ class Story(PlayAgent):
 
     def set_memory(self, memory):
         self._scene_summary = memory
-        self.add_history('user', f"过去的故事：{memory}")
+        self.add_history('user', f"结束的故事：{memory}\n不要让结束的故事再次发生。")
 
     def summary_all(self):
         scene = ""

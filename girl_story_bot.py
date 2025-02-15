@@ -46,13 +46,13 @@ class Bot(commands.Bot):
             for i, s in enumerate(INIT_STEPS[message.channel.id]):
                 if s.get('input', None) is None:
                     if message.content == 'N':
-                        s['input'] = s.get('default', '')
+                        s['input'] = s.get('default', None)
                     else:
                         s['input'] = message.content
                     if i + 1 < len(INIT_STEPS[message.channel.id]):
                         _next = INIT_STEPS[message.channel.id][i + 1]
                         await message.reply(
-                            f"输入{_next['label']}(默认:{_next.get('default', '无')}，输入“N”使用默认):")
+                            f"输入{_next['label']}(默认:{_next.get('default', '无')}，输入“N”使用默认):\n{_next.get('description', '')}", )
                         return
             name = INIT_STEPS[message.channel.id][0]['input']
             background = INIT_STEPS[message.channel.id][1].get('input', None)
@@ -61,6 +61,7 @@ class Bot(commands.Bot):
             main_aim = INIT_STEPS[message.channel.id][4].get('input', None)
             before_story = INIT_STEPS[message.channel.id][5].get('input', None)
             god_name = (INIT_STEPS[message.channel.id][6].get('input', 'evil')).lower() + '_god'
+            extra_xp = INIT_STEPS[message.channel.id][7].get('input', None)
             await message.reply(
                 f'正在为你初始化游戏, {name}!\n**请注意，这是一个早期版本，可能存在大量未经发现的Bug。由于开发需要，系统会不定期重启或停机，对话记录会被清空。**\n'
                 f'游戏流程中会有一个神（或者说DM）在暗中操纵女主角的命运。\n'
@@ -79,7 +80,8 @@ class Bot(commands.Bot):
                 story_background=background or "异世界故事",
                 player_role=role or "女冒险家",
                 player_state=state or "在旅店的房间里，正要准备出门寻找任务",
-                player_main_aim=main_aim or "收集金币，买个房子")
+                player_main_aim=main_aim or "收集金币，买个房子",
+                extra_xp=extra_xp)
             STORY_MAP[message.channel.id] = story_manager
             INIT_STEPS.pop(message.channel.id)
             if before_story:
@@ -171,13 +173,14 @@ async def init_game(interaction: discord.Interaction):
         {'label': "女主角的身份", 'value': 'player_role', 'default': '女冒险家'},
         {'label': "女主的初始状态", 'value': 'player_state', 'default': '在旅店的房间里，正要准备出门寻找任务'},
         {'label': "主线目标", 'value': 'player_main_aim', 'default': '收集金币，买个房子'},
-        {'label': "回忆", 'value': 'before_story', 'description': "第一次游戏不需要填。", 'default': 'N'},
+        {'label': "回忆", 'value': 'before_story', 'description': "第一次游戏不需要填。", 'default': ''},
         {'label': "叙述者", 'value': 'god_name', 'default': 'lewd',
          'description': "evil: 给你制造重重困境，并以此为乐。\n"
                         "naughty: 会给你一些麻烦，但也会给你机会。\n"
                         "lewd: 一个“快乐”的故事。\n"
                         "lovely: 一个轻松愉快的故事。\n"
          },
+        {'label': "特别xp", "value": "extra_xp"}
     ]
     init_step = INIT_STEPS[interaction.channel.id]
     await interaction.response.send_message(f"输入{init_step[0]['label']}(默认:{init_step[0].get('default', '无')}):",

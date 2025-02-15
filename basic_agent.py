@@ -240,7 +240,6 @@ class PlayAgent:
                                preset=self.model_preset,
                                content_callback=stream_callback,
                                stop_words=self.stop_words)
-        self._last_options = next_options
         return resp, next_options
 
     def quit(self, **kwargs):
@@ -297,19 +296,17 @@ class PlayAgent:
             else:
                 resp = req(stream_callback)
 
-        self._last_options = next_options
         return resp, next_options
 
     def _next_options(self):
         next_options = []
-        self._options_context = {}
         for branch in self._options_branch:
             for key, value in self.config.items():
                 if key.startswith(f"{branch}_option"):
                     next_options.append({'value': key})
         for i, option in enumerate(next_options):
             option['label'] = f"{self._format_text(option['value'], self.prompt_args)}".strip()
-            self._options_context[option['value']] = option
+        self._last_options = next_options
         return next_options
 
     def _compress_history(self, executor):
