@@ -4,6 +4,7 @@ import logging
 import sys
 import time
 import traceback
+import uuid
 
 import httpx
 from httpx import Timeout
@@ -14,9 +15,6 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 console_handler = logging.StreamHandler(stream=sys.stdout)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
-
-# nsfw support models = ["alpindale/magnum-72b","nousresearch/hermes-3-llama-3.1-405b:extended","microsoft/wizardlm-2-8x22b"]
-
 
 with open('config.json') as f:
     llm_presets = json.load(f)['llm_presets']
@@ -48,12 +46,13 @@ def _llm(system_prompt, user_prompt, preset, history=None,
         messages = []
         if system_prompt is not None:
             messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
     else:
-        history.append({"role": "user", "content": user_prompt})
+        history.append({"role": "user", "content": user_prompt, "id": uuid.uuid4().hex})
         messages = []
         if system_prompt is not None:
             messages = [{"role": "system", "content": system_prompt}]
-        messages += history
+        messages += list(map(lambda x: {"role": x['role'], 'content': x['content']}, history))
     if prefix_words is not None:
         messages.append({"role": "assistant", "content": prefix_words})
     from openai import OpenAI
@@ -63,6 +62,7 @@ def _llm(system_prompt, user_prompt, preset, history=None,
         api_key=llm_preset['api_key'],
         http_client=httpx_client
     )
+
     response = client.chat.completions.create(
         model=llm_preset['model'],
         messages=messages,
@@ -98,7 +98,7 @@ def _llm(system_prompt, user_prompt, preset, history=None,
         for word in hidden_words:
             content = content.replace(word, '')
     if history is not None:
-        history.append({"role": "assistant", "content": content})
+        history.append({"role": "assistant", "content": content, 'id': uuid.uuid4().hex})
     if prefix_words is not None and not content.strip().startswith(prefix_words):
         content = prefix_words + content
     if suffix_words is not None and not content.strip().endswith(suffix_words):
@@ -114,3 +114,4 @@ def advance_llm(history, model='qwen/qwen-2-7b-instruct', stop_words=None, prefi
         return llm(system_prompt, user_prompt, model, history, stop_words, prefix_words, suffix_words)
 
     return _llm
+

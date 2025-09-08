@@ -182,19 +182,6 @@ class PlayAgent:
         self._options_context = {}
         self._options_branch = ["main"]
         self._last_options = []
-        self._sub_agent = None
-        self._parent_agent = None
-        self._quit_msg = None
-
-    def set_parent(self, parent_agent):
-        self._parent_agent = parent_agent
-        return self
-
-    def set_sub(self, sub_agent):
-        self._sub_agent = sub_agent
-        if sub_agent:
-            sub_agent.set_parent(self)
-        return self
 
     def set_context(self, context):
         self._history = context
@@ -242,43 +229,13 @@ class PlayAgent:
                                stop_words=self.stop_words)
         return resp, next_options
 
-    def quit(self, **kwargs):
-        if self._parent_agent:
-            self._quit_msg = self._format_text('summary', {**self.prompt_args, **kwargs})
-
-    def on_sub_quit(self, **kwargs):
-        pass
-
-    def play(self, option, extra_input, stream_callback=None, **kwargs):
-        extra_args = {}
-        if self._sub_agent:
-            resp, options = self._sub_agent.play(option, extra_input, stream_callback)
-            if not self._sub_agent._quit_msg:
-                return resp, options
-            else:
-                extra_args['sub_summary'] = self._sub_agent._quit_msg
-                player_action = None
-                self._sub_agent = None
-                self.on_sub_quit(**extra_args)
-        else:
-            action_value = option
-            player_action = extra_input
-            branch = action_value.split('_')[0]
-            if hasattr(self, 'play_' + branch):
-                extra_args = getattr(self, 'play_' + branch)(action_value, player_action)
-            if self._quit_msg is not None:
-                return "", []
-            if not extra_args:
-                extra_args = {}
-            if self._sub_agent:
-                return self._sub_agent.startup(stream_callback)
+    def play(self, stream_callback=None, **kwargs):
         next_options = self._next_options()
 
         def req(content_callback):
 
             _resp, _ = llm_base.llm(self._system_prompt(),
-                                    self._play_prompt(player_action=player_action,
-                                                      player_option=self._format_text(option), **extra_args, **kwargs),
+                                    self._play_prompt(**kwargs),
                                     history=self._history,
                                     preset=self.model_preset, content_callback=content_callback,
                                     stop_words=self.stop_words)

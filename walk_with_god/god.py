@@ -3,6 +3,18 @@ import random
 from basic_agent import PlayAgent
 
 
+def _enhance_stream_callback(callback):
+    def enhanced_callback(content):
+        content = "DM思考中" + len(content) * '.'
+        callback(content)
+
+    return enhanced_callback
+
+
+def _enhance_scene(scene, player_name):
+    return scene.replace('\n', '').replace('\r', '').replace('你', player_name)
+
+
 class God(PlayAgent):
     config_path = 'config/walk_with_god.yaml'
 
@@ -13,36 +25,34 @@ class God(PlayAgent):
         self._scene_summary = ""
 
     def startup(self, stream_callback=None, **kwargs):
+        if stream_callback is not None:
+            stream_callback = _enhance_stream_callback(stream_callback)
         if 'scene' in kwargs:
+            kwargs['scene'] = _enhance_scene(kwargs['scene'], self.prompt_args['player_name'])
             self._scene_history.append(kwargs['scene'])
         if self._scene_summary:
             self.add_history('user', f"结束的故事：{self._scene_summary}\n不要让结束的故事再次发生。")
-        resp, options = super().startup(self._enhance_stream_callback(stream_callback), **kwargs)
+        resp, options = super().startup(stream_callback, **kwargs)
         return resp.replace('\n', '').replace('\r', ''), options
 
-    def play(self, option, extra_input, stream_callback=None, **kwargs):
+    def play(self, stream_callback=None, **kwargs):
+        if stream_callback is not None:
+            stream_callback = _enhance_stream_callback(stream_callback)
         if 'scene' in kwargs:
+            kwargs['scene'] = _enhance_scene(kwargs['scene'], self.prompt_args['player_name'])
             self._scene_history.append(kwargs['scene'])
         if len(self._scene_history) > 30:
             self.prompt_args['gameover'] = True
         self.goodness_counter -= 1
         if self.goodness_counter == 0:
             self.goodness_counter = random.randint(4, 8)
-            resp, options = super().play(option, extra_input, self._enhance_stream_callback(stream_callback),
+            resp, options = super().play(stream_callback,
                                          goodness=True,
                                          **kwargs)
         else:
-            resp, options = super().play(option, extra_input, self._enhance_stream_callback(stream_callback),
+            resp, options = super().play(stream_callback,
                                          **kwargs)
         return resp.replace('\n', '').replace('\r', ''), options
-
-    def _enhance_stream_callback(self, callback):
-
-        def enhanced_callback(content):
-            content = "DM思考中" + len(content) * '.'
-            callback(content)
-
-        return enhanced_callback
 
     def _compress_history(self, executor):
         if len(self._history) < 20:
@@ -74,6 +84,7 @@ class LewdGod(God):
 
 class LovelyGod(God):
     name = 'lovely_god'
+    model_preset = "gpt-4.1-mini"
 
 
 class SlutGod(God):
